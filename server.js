@@ -2,7 +2,7 @@ import express from "express";
 import http from "http";
 import { Server } from "socket.io";
 
-// Full question pool
+// Full question pool (each with exactly 4 options as shown)
 const quizQuestions = [
   { question: "What does a firewall do?", options: ["Monitors and controls network traffic", "Encrypts emails", "Stores passwords", "Detects malware"], answer: 0 },
   { question: "Which is a strong password practice?", options: ["Using 'password' as your password", "Using a mix of letters, numbers, and symbols", "Sharing passwords with colleagues", "Using only your birthdate"], answer: 1 },
@@ -43,7 +43,17 @@ const io = new Server(server, { cors: { origin: "*" } });
 const PORT = process.env.PORT || 3000;
 const rooms = {};
 
-function get10RandomQuestions() {
+// Shuffle helper (Fisher-Yates)
+function shuffle(array) {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+  return array;
+}
+
+// Pick 10 random questions and for each, shuffle options and track answer index
+function get10RandomShuffledQuestions() {
   let selectedIndexes = [];
   while (selectedIndexes.length < 10) {
     let randomIndex = Math.floor(Math.random() * quizQuestions.length);
@@ -51,7 +61,18 @@ function get10RandomQuestions() {
       selectedIndexes.push(randomIndex);
     }
   }
-  return selectedIndexes.map(i => quizQuestions[i]);
+  let questionObjs = selectedIndexes.map(i => {
+    const orig = quizQuestions[i];
+    let optionObjs = orig.options.map((t, idx) => ({ t, idx }));
+    let shuffled = shuffle(optionObjs.slice());
+    const answerIdx = shuffled.findIndex(o => o.idx === orig.answer);
+    return {
+      question: orig.question,
+      options: shuffled.map(o => o.t),
+      answer: answerIdx
+    }
+  });
+  return questionObjs;
 }
 
 app.get("/", (req, res) => {
@@ -82,7 +103,7 @@ io.on("connection", (socket) => {
     if (!room || room.started) return;
 
     room.started = true;
-    room.questionSet = get10RandomQuestions();
+    room.questionSet = get10RandomShuffledQuestions();
     room.currentQuestion = 0;
     sendQuestion(roomCode);
   });
